@@ -1,3 +1,5 @@
+// ignore_for_file: invalid_use_of_visible_for_testing_member
+
 import 'package:bootstrap_icons/bootstrap_icons.dart';
 import 'package:clipboard/clipboard.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
@@ -5,13 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_translation/google_mlkit_translation.dart';
-import 'package:hive/hive.dart';
+import 'package:language_translator/Provider/provider_class.dart';
 import 'package:language_translator/UI/History_screen.dart';
 import 'package:language_translator/UI/cameratranslator_screen.dart';
 import 'package:language_translator/components/Language_list.dart';
 import 'package:language_translator/components/Toast_message.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:flutter_tts/flutter_tts.dart';
+import 'package:provider/provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,187 +22,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController translatorController = TextEditingController();
-  String translatedText = "";
-  late OnDeviceTranslator onDeviceTranslator;
-  late FlutterTts flutterTts;
-  late stt.SpeechToText speechToText;
-  bool isListening = false;
-  String pasteValue = '';
-  bool isSpeaking1 = false;
-  bool isSpeaking2 = false;
-  bool isTranslating = false;
-
-  // 🟢 Store selected languages
-  TranslateLanguage sourceLanguage = TranslateLanguage.english;
-  TranslateLanguage targetLanguage = TranslateLanguage.german;
-
   @override
   void initState() {
     super.initState();
-    initializeTranslator();
-    flutterTts = FlutterTts();
-    setupTTS();
-    speechToText = stt.SpeechToText();
-    requestMicrophonePermission();
   }
-
-  void initializeTranslator() {
-    onDeviceTranslator = OnDeviceTranslator(
-      sourceLanguage: sourceLanguage,
-      targetLanguage: targetLanguage,
-    );
-  }
-
-  // 🟠 Swap Functionality
-  void swapLanguages() {
-    setState(() {
-      // Swap source and target language
-      TranslateLanguage temp = sourceLanguage;
-      sourceLanguage = targetLanguage;
-      targetLanguage = temp;
-
-      // Re-initialize translator with new languages
-      initializeTranslator();
-    });
-  }
-
-//permission for mic
-Future<void> requestMicrophonePermission() async {
-  final status = await speechToText.hasPermission;
-  if (!status) {
-    await speechToText.initialize();
-  }
-}
-
-// Initialize TTS properly
-  void setupTTS() async {
-    await flutterTts.setLanguage(
-        targetLanguage.name.toLowerCase()); // Dynamic language selection
-    await flutterTts.setSpeechRate(0.5); // Normal speaking rate
-    await flutterTts.setVolume(1.0); // Max volume
-    await flutterTts.setPitch(1.0); // Default pitch
-    await flutterTts.awaitSpeakCompletion(true); // Ensure completion
-  }
-
-// Target text speak
-  void targetspeakTranslation() async {
-    if (isSpeaking2) {
-      stopSpeaking(); // Stop if already speaking
-      return;
-    }
-
-    if (translatedText.isNotEmpty) {
-      setState(() => isSpeaking2 = true); // Show stop icon
-      var result = await flutterTts.speak(translatedText);
-      if (result == 1) {
-        print("✅ TTS Success");
-      } else {
-        print("❌ TTS Failed");
-      }
-      setState(() => isSpeaking2 = false); // Revert to volume icon
-    } else {
-      ToastMessage().toastmessage(message: "No text to speak.");
-    }
-  }
-
-  // Source text speak
-  void sourcespeakTranslation() async {
-    if (isSpeaking1) {
-      stopSpeaking(); // Stop if already speaking
-      return;
-    }
-
-    if (translatorController.text.isNotEmpty) {
-      setState(() => isSpeaking1 = true); // Show stop icon
-      var result = await flutterTts.speak(translatorController.text);
-      if (result == 1) {
-        print("✅ TTS Success");
-      } else {
-        print("❌ TTS Failed");
-      }
-      setState(() => isSpeaking1 = false); // Revert to volume icon
-    } else {
-      ToastMessage().toastmessage(message: "No text to speak.");
-    }
-  }
-
-  // Stop Speaking
-  void stopSpeaking() async {
-    await flutterTts.stop();
-    setState(() {
-      isSpeaking1 = false;
-      isSpeaking2 = false;
-    });
-  }
-
-  @override
-  void dispose() {
-    onDeviceTranslator.close();
-    super.dispose();
-  }
-
-  // 🟢 Function: Translate Text
-  Future<void> translateText() async {
-    if (translatorController.text.isEmpty) return;
-    setState(() {
-      isTranslating = true; // Show "Translating..." text
-      translatedText = ""; // Clear previous result
-    });
-
-    String result =
-        await onDeviceTranslator.translateText(translatorController.text);
-    setState(() {
-      translatedText = result;
-      isTranslating = false; // Hide "Translating..." text
-    });
-
-    // Save to History
-    saveTranslation(translatorController.text, result);
-  }
-
-  // 🔵 Function: Save Translation to History (Hive)
-  void saveTranslation(String original, String translated) async {
-    var box = await Hive.openBox('translations');
-    box.add({'input': original, 'output': translated});
-  }
-
-  // 🟠 Function: Speak Translation (Text-to-Speech)
-
-  // 🔴 Function: Start Voice Input (Speech-to-Text)
-  void startListening() async {
-  bool available = await speechToText.initialize(
-    onStatus: (status) {
-      print("Speech Status: $status");
-    },
-    onError: (error) {
-      print("Speech Error: $error");
-    },
-  );
-
-  if (available) {
-    setState(() => isListening = true);
-    speechToText.listen(
-      onResult: (result) {
-        setState(() {
-          translatorController.text = result.recognizedWords;
-        });
-      },
-      listenFor: Duration(minutes: 1), // ✅ Ensures long listening sessions
-      pauseFor: Duration(seconds: 3), // ✅ Prevents abrupt stopping
-      localeId: 'en_US', // ✅ Ensures English as the default language
-    );
-  } else {
-    ToastMessage().toastmessage(message: "Speech recognition not available");
-  }
-}
-
-
-void stopListening() async {
-  await speechToText.stop();
-  setState(() => isListening = false);
-}
-
 
   Widget _buildLanguageDropdown(bool isSource) {
     return Container(
@@ -227,24 +51,31 @@ void stopListening() async {
             offset: const Offset(-10, 0),
             scrollbarTheme: ScrollbarThemeData(),
           ),
-          value: isSource ? sourceLanguage : targetLanguage,
+          value: isSource
+              ? Provider.of<TranslationProvider>(context).sourceLanguage
+              : Provider.of<TranslationProvider>(context).targetLanguage,
           isExpanded: true,
           alignment: Alignment.centerLeft,
           onChanged: (TranslateLanguage? newValue) {
             if (newValue != null) {
-              setState(() {
-                if (isSource) {
-                  sourceLanguage = newValue;
-                } else {
-                  targetLanguage = newValue;
-                }
+              final translationProvider =
+                  Provider.of<TranslationProvider>(context, listen: false);
 
-                onDeviceTranslator.close();
-                initializeTranslator();
-              });
+              if (isSource) {
+                translationProvider.sourceLanguage = newValue;
+              } else {
+                translationProvider.targetLanguage = newValue;
+              }
+
+              translationProvider.onDeviceTranslator.close();
+              translationProvider.initializeTranslator();
+
+              // ignore: invalid_use_of_protected_member
+              translationProvider.notifyListeners(); // Ensure UI updates
             }
           },
           items: languages.map((lang) {
+            
             return DropdownMenuItem(
               value: lang,
               child: Container(
@@ -280,6 +111,7 @@ void stopListening() async {
 
   @override
   Widget build(BuildContext context) {
+    final translationProvider = Provider.of<TranslationProvider>(context);
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF003366),
@@ -317,7 +149,7 @@ void stopListening() async {
                   children: [
                     _buildLanguageDropdown(true),
                     GestureDetector(
-                      onTap: swapLanguages,
+                      onTap: translationProvider.swapLanguages,
                       child: Icon(BootstrapIcons.arrow_left_right),
                     ),
                     _buildLanguageDropdown(false),
@@ -346,16 +178,11 @@ void stopListening() async {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(sourceLanguage.name,
+                            Text(translationProvider.sourceLanguage.name,
                                 style: GoogleFonts.poppins(
                                     color: Color(0xFF003366))),
                             GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  translatorController.clear();
-                                  translatedText = '';
-                                });
-                              },
+                              onTap: translationProvider.clearText,
                               child: Icon(Icons.close, color: Colors.black),
                             ),
                           ],
@@ -364,7 +191,7 @@ void stopListening() async {
                           onChanged: (value) {
                             setState(() {});
                           },
-                          controller: translatorController,
+                          controller: translationProvider.translatorController,
                           style: const TextStyle(color: Colors.black),
                           maxLines: null, // 🌟 Enables auto-expansion
                           keyboardType: TextInputType.multiline,
@@ -380,7 +207,8 @@ void stopListening() async {
                             IconButton(
                               icon: const Icon(BootstrapIcons.copy),
                               onPressed: () {
-                                FlutterClipboard.copy(translatorController.text)
+                                FlutterClipboard.copy(translationProvider
+                                        .translatorController.text)
                                     .then(
                                   (value) {
                                     ToastMessage()
@@ -391,12 +219,13 @@ void stopListening() async {
                             ),
                             IconButton(
                               icon: Icon(
-                                isSpeaking1
+                                translationProvider.isSpeaking1
                                     ? BootstrapIcons.stop_circle
                                     : BootstrapIcons.volume_down,
                                 size: 35.sp,
                               ),
-                              onPressed: sourcespeakTranslation,
+                              onPressed:
+                                  translationProvider.sourcespeakTranslation,
                             ),
                           ],
                         ),
@@ -415,17 +244,25 @@ void stopListening() async {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     FloatingActionButton(
-                      onPressed: isListening ? stopListening : startListening,
-                      backgroundColor: Colors.blue,
+                      onPressed: translationProvider.isListening
+                          ? translationProvider.stopListening
+                          : translationProvider.startListening,
+                      backgroundColor: translationProvider.isListening
+                          ? Colors.red
+                          : Colors.blue,
                       child: Icon(
-                          isListening ? BootstrapIcons.stop_fill : BootstrapIcons.mic_fill,
+                          translationProvider.isListening
+                              ? BootstrapIcons.stop_fill
+                              : BootstrapIcons.mic_fill,
                           color: Colors.white),
                     ),
                     ElevatedButton(
-                      onPressed: translateText,
+                      onPressed: translationProvider.translateText,
                       style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.orange),
-                      child: const Text('Translate'),
+                      child: translationProvider.isTranslating
+                          ? const CircularProgressIndicator()
+                          : const Text('Translate'),
                     ),
                   ],
                 ),
@@ -450,14 +287,14 @@ void stopListening() async {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(targetLanguage.name,
+                        Text(translationProvider.targetLanguage.name,
                             style:
                                 GoogleFonts.poppins(color: Color(0xFF003366))),
                         SizedBox(height: 10.h),
                         Text(
-                          isTranslating
+                          translationProvider.isTranslating
                               ? "Translating..." // 🟠 Show Loading Text
-                              : translatedText,
+                              : translationProvider.translatedText,
                           style: GoogleFonts.poppins(fontSize: 16.sp),
                         ),
                         Row(
@@ -466,7 +303,9 @@ void stopListening() async {
                             IconButton(
                               icon: const Icon(BootstrapIcons.copy),
                               onPressed: () {
-                                FlutterClipboard.copy(translatedText).then(
+                                FlutterClipboard.copy(
+                                        translationProvider.translatedText)
+                                    .then(
                                   (value) {
                                     ToastMessage()
                                         .toastmessage(message: 'Copied');
@@ -476,12 +315,13 @@ void stopListening() async {
                             ),
                             IconButton(
                               icon: Icon(
-                                isSpeaking2
+                                translationProvider.isSpeaking2
                                     ? BootstrapIcons.stop_circle
                                     : BootstrapIcons.volume_down,
                                 size: 35.sp,
                               ),
-                              onPressed: targetspeakTranslation,
+                              onPressed:
+                                  translationProvider.targetspeakTranslation,
                             ),
                           ],
                         ),
